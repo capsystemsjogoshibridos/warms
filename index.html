@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Emoji Wars</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap" rel="stylesheet">
+    <!-- Matter.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+</head>
+<body>
+    <div id="sky-background">
+        <div class="sun"></div>
+        <div class="cloud cloud-1"></div>
+        <div class="cloud cloud-2"></div>
+        <div class="cloud cloud-3"></div>
+    </div>
+    <div id="water-background"></div>
+    <div id="night-overlay" class="hidden"></div>
+    
+    <button class="move-btn hidden" id="move-left-btn">⬅️</button>
+    <button class="move-btn hidden" id="move-right-btn">➡️</button>
+
+    <div id="ui-container">
+        <div class="glass-panel main-menu">
+            <h1 class="game-title">Warms: Guerra de Emojis</h1>
+            
+            <div class="players-setup">
+                <!-- Player 1 Setup -->
+                <div class="player-card" id="player1-setup">
+                    <h2>Player 1 <span class="wins-display" id="p1-wins-display">Vitórias: 0</span></h2>
+                    
+                    <div class="input-group">
+                        <label for="p1-name">Nome da Equipe</label>
+                        <input type="text" id="p1-name" placeholder="Ex: Exército Alpha" value="Exército Alpha">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="p1-flag">Bandeira da Equipe</label>
+                        <select id="p1-flag">
+                            <option value="🟥">🟥 Vermelho</option>
+                            <option value="🟦">🟦 Azul</option>
+                            <option value="🟩">🟩 Verde</option>
+                            <option value="🟨">🟨 Amarelo</option>
+                            <option value="🏳️‍🌈">🏳️‍🌈 Arco-Íris</option>
+                            <option value="🏴‍☠️">🏴‍☠️ Pirata</option>
+                            <option value="🎭">🎭 Teatro</option>
+                            <option value="🏁">🏁 Corrida</option>
+                        </select>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Escolha seu Emoji (Animal em Pé)</label>
+                        <div class="emoji-selector" id="p1-emoji-selector">
+                            <button class="emoji-btn selected" data-emoji="🦍">🦍</button>
+                            <button class="emoji-btn" data-emoji="🐅">🐅</button>
+                            <button class="emoji-btn" data-emoji="🦏">🦏</button>
+                            <button class="emoji-btn" data-emoji="🐫">🐫</button>
+                            <button class="emoji-btn" data-emoji="🦕">🦕</button>
+                            <button class="emoji-btn" data-emoji="🦘">🦘</button>
+                            <button class="emoji-btn" data-emoji="🐧">🐧</button>
+                            <button class="emoji-btn" data-emoji="🦩">🦩</button>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="p1-count">Qtd. Soldados: <span id="p1-count-val">3</span></label>
+                        <input type="range" id="p1-count" min="1" max="3" value="3">
+                    </div>
+
+                    <div class="input-group names-container" id="p1-names-container">
+                        <!-- Gerado por JS -->
+                    </div>
+                </div>
+
+                <!-- Player 2 Setup -->
+                <div class="player-card" id="player2-setup">
+                    <h2>Player 2 <span class="wins-display" id="p2-wins-display">Vitórias: 0</span></h2>
+                    
+                    <div class="input-group">
+                        <label for="p2-name">Nome da Equipe</label>
+                        <input type="text" id="p2-name" placeholder="Ex: Tropa Ômega" value="Tropa Ômega">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="p2-flag">Bandeira da Equipe</label>
+                        <select id="p2-flag">
+                            <option value="🟦">🟦 Azul</option>
+                            <option value="🟥">🟥 Vermelho</option>
+                            <option value="🟩">🟩 Verde</option>
+                            <option value="🟨">🟨 Amarelo</option>
+                            <option value="🏳️‍🌈">🏳️‍🌈 Arco-Íris</option>
+                            <option value="🏴‍☠️">🏴‍☠️ Pirata</option>
+                            <option value="🎭">🎭 Teatro</option>
+                            <option value="🏁">🏁 Corrida</option>
+                        </select>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Escolha seu Emoji (Animal em Pé)</label>
+                        <div class="emoji-selector" id="p2-emoji-selector">
+                            <button class="emoji-btn" data-emoji="🦍">🦍</button>
+                            <button class="emoji-btn selected" data-emoji="🐅">🐅</button>
+                            <button class="emoji-btn" data-emoji="🦏">🦏</button>
+                            <button class="emoji-btn" data-emoji="🐫">🐫</button>
+                            <button class="emoji-btn" data-emoji="🦕">🦕</button>
+                            <button class="emoji-btn" data-emoji="🦘">🦘</button>
+                            <button class="emoji-btn" data-emoji="🐧">🐧</button>
+                            <button class="emoji-btn" data-emoji="🦩">🦩</button>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="p2-count">Qtd. Soldados: <span id="p2-count-val">3</span></label>
+                        <input type="range" id="p2-count" min="1" max="3" value="3">
+                    </div>
+
+                    <div class="input-group names-container" id="p2-names-container">
+                        <!-- Gerado por JS -->
+                    </div>
+                </div>
+            </div>
+
+            <button id="start-btn" class="primary-btn">INICIAR BATALHA</button>
+        </div>
+    </div>
+
+    <!-- Game HUD (Hidden initially) -->
+    <div id="game-hud" class="hidden">
+        <div class="hud-panel p1-hud">
+            <div class="hud-top">
+                <span class="hud-flag" id="hud-p1-flag">🟥</span>
+                <span class="hud-name" id="hud-p1-name">Exército Alpha</span>
+            </div>
+            <div class="team-hp-bg">
+                <div class="team-hp-fill" id="p1-team-hp" style="width: 100%; background-color: var(--primary-color);">100%</div>
+            </div>
+            <button class="hud-arsenal-btn hidden" id="p1-arsenal-btn">ABRIR ARSENAL</button>
+        </div>
+        
+        <div class="turn-indicator">
+            <h2 id="current-turn">Turno: Player 1</h2>
+            <p id="game-instructions">Arraste para mirar e solte para atirar!</p>
+        </div>
+        
+        <div class="hud-panel p2-hud">
+            <div class="hud-top">
+                <span class="hud-name" id="hud-p2-name">Tropa Ômega</span>
+                <span class="hud-flag" id="hud-p2-flag">🟦</span>
+            </div>
+            <div class="team-hp-bg">
+                <div class="team-hp-fill" id="p2-team-hp" style="width: 100%; background-color: var(--secondary-color);">100%</div>
+            </div>
+            <button class="hud-arsenal-btn hidden" id="p2-arsenal-btn">ABRIR ARSENAL</button>
+        </div>
+    </div>
+
+    <!-- Weapon Menu (Hidden initially) -->
+    <div id="weapon-menu" class="hidden">
+        <div class="weapon-panel">
+            <h3>ARSENAL</h3>
+            <div class="weapon-grid">
+                <button class="weapon-btn" data-weapon="grenade" title="Granada">💣</button>
+                <button class="weapon-btn" data-weapon="gun" title="Arma de Fogo">🔫</button>
+                <button class="weapon-btn" data-weapon="dynamite" title="Dinamite">🧨</button>
+                <button class="weapon-btn" data-weapon="meteor" title="Meteoro (1x)">☄️</button>
+                <button class="weapon-btn" data-weapon="sheep" title="Carneiro Explosivo">🐑</button>
+                <button class="weapon-btn" data-weapon="umbrella" title="Guarda-Chuva (Chuva Ácida 1x)">☂️</button>
+                <button class="weapon-btn" data-weapon="sock" title="Meia Tóxica">🧦</button>
+                <button class="weapon-btn" data-weapon="boomerang" title="Bumerangue">🪃</button>
+                <button class="weapon-btn" data-weapon="saucer" title="Disco Voador (Abdução)">🛸</button>
+                <button class="weapon-btn" data-weapon="lightning" title="Raio (Gigante 3 Turnos)">⚡</button>
+                <button class="weapon-btn" data-weapon="pumpkin" title="Abóbora de Halloween (Mina)">🎃</button>
+                <button class="weapon-btn" data-weapon="pepper" title="Pimenta (Labareda)">🌶️</button>
+                <button class="weapon-btn" data-weapon="helicopter" title="Helicóptero (Feijões Explosivos)">🚁</button>
+                <button class="weapon-btn" data-weapon="helmet" title="Capacete Saúde (1x)">⛑️</button>
+                <button class="weapon-btn" data-weapon="magnet" title="Ímã (Atração)">🧲</button>
+                <button class="weapon-btn" data-weapon="frisbee" title="Frisbee (Ricochete)">🥏</button>
+                <button class="weapon-btn" data-weapon="icecube" title="Cubo de Gelo (Congela Equipe 2 Turnos - 1x)">🧊</button>
+                <button class="weapon-btn" data-weapon="skip" title="Pular a Vez">⏭️</button>
+                <button class="weapon-btn" data-weapon="fairy" title="Fada Madrinha (Míssil Teleguiado - 1x)">🧚</button>
+                <button class="weapon-btn" data-weapon="moai" title="Estátua Moai (Destruição Vertical - 1x)">🗿</button>
+                <button class="weapon-btn" data-weapon="fan" title="Leque (Vento Forte - 1x)">🪭</button>
+            </div>
+            <button id="close-weapon-btn">Fechar</button>
+        </div>
+    </div>
+
+    <!-- Giant Announcement Text -->
+    <div id="giant-announcement" class="hidden"></div>
+
+    <script src="game.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
