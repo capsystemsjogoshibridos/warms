@@ -51,10 +51,15 @@ window.EmojiWarsGame = (function() {
     let isGameOver = false;
     let isAiThinking = false;
     let seededRandom = null;
+    let endTurnTimer = null;
 
     function init(gameConfig) {
         config = gameConfig;
         seededRandom = config.seed ? createSeededRandom(config.seed) : null;
+        if (endTurnTimer) {
+            clearTimeout(endTurnTimer);
+            endTurnTimer = null;
+        }
         
         p1Soldiers = [];
         p2Soldiers = [];
@@ -474,13 +479,15 @@ window.EmojiWarsGame = (function() {
         });
     }
 
-    function applyInstantWeapon(weapon, publishSnapshot = false) {
+    function applyInstantWeapon(weapon, publishSnapshot = false, advanceTurn = true) {
         currentWeapon = weapon;
         shootWeapon(activeSoldier ? activeSoldier.position : {x:0, y:0}, {x:0, y:0}, activeSoldier ? activeSoldier.color : '#fff');
-        endTurnSequence(weapon === 'helicopter' || weapon === 'pepper' ? 7000 : 3000, publishSnapshot);
+        if (advanceTurn) {
+            endTurnSequence(weapon === 'helicopter' || weapon === 'pepper' ? 7000 : 3000, publishSnapshot);
+        }
     }
 
-    function applyDragAction(forceX, forceY, weapon = currentWeapon, publishSnapshot = false) {
+    function applyDragAction(forceX, forceY, weapon = currentWeapon, publishSnapshot = false, advanceTurn = true) {
         if (!activeSoldier || isGameOver) return;
         currentWeapon = weapon;
 
@@ -513,17 +520,26 @@ window.EmojiWarsGame = (function() {
 
             // Drags seguintes: DISPARA arma e termina o turno
             shootWeapon(activeSoldier.position, { x: forceX, y: forceY }, activeSoldier.color);
-            endTurnSequence(3000, publishSnapshot);
+            if (advanceTurn) {
+                endTurnSequence(3000, publishSnapshot);
+            }
     }
 
     function applyOnlineAction(action) {
         if (!action || isGameOver || action.player !== currentTurn) return;
+        const requiresAuthoritativeSnapshot = action.type === 'instantWeapon' || (action.type === 'drag' && hasMoved);
         if (action.type === 'instantWeapon') {
-            applyInstantWeapon(action.weapon, false);
+            applyInstantWeapon(action.weapon, false, false);
+            if (requiresAuthoritativeSnapshot) {
+                showGiantAnnouncement("SINCRONIZANDO TURNO...");
+            }
             return;
         }
         if (action.type === 'drag') {
-            applyDragAction(action.forceX, action.forceY, action.weapon, false);
+            applyDragAction(action.forceX, action.forceY, action.weapon, false, false);
+            if (requiresAuthoritativeSnapshot) {
+                showGiantAnnouncement("SINCRONIZANDO TURNO...");
+            }
         }
     }
 
@@ -570,6 +586,10 @@ window.EmojiWarsGame = (function() {
 
     function applyOnlineSnapshot(snapshot) {
         if (!snapshot || isGameOver) return;
+        if (endTurnTimer) {
+            clearTimeout(endTurnTimer);
+            endTurnTimer = null;
+        }
 
         const terrainSet = new Set(snapshot.terrainIds || []);
         terrainBlocks = terrainBlocks.filter(block => {
@@ -650,8 +670,13 @@ window.EmojiWarsGame = (function() {
     
     function endTurnSequence(delay = 3000, publishSnapshot = false) {
         isAiming = false;
+        if (endTurnTimer) {
+            clearTimeout(endTurnTimer);
+            endTurnTimer = null;
+        }
 
-        setTimeout(() => {
+        endTurnTimer = setTimeout(() => {
+            endTurnTimer = null;
             if(!isGameOver) {
                 applyToxicDamage();
                 processGiantStatus();
