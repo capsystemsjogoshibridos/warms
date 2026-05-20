@@ -9,7 +9,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const startBtn = document.getElementById('start-btn');
     const sessionId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const roomPrefix = 'emoji-wars-room-';
-    const socket = typeof io === 'function' ? io() : null;
+    const appConfig = window.EMOJI_WARS_CONFIG || {};
+    const socketServerUrl = appConfig.socketServerUrl || undefined;
+    const socket = typeof io === 'function'
+        ? io(socketServerUrl, {
+            transports: ['websocket', 'polling'],
+            reconnectionAttempts: 3,
+            timeout: 5000
+        })
+        : null;
 
     let currentMode = 'local';
     let activeRoom = null;
