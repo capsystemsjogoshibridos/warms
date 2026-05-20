@@ -13,6 +13,7 @@ window.EmojiWarsGame = (function() {
     let p1Soldiers = [];
     let p2Soldiers = [];
     let terrainBlocks = [];
+    let terrainCatalog = new Map();
     let visualEffects = [];
     let toxicSocks = [];
     let boomerangs = [];
@@ -48,13 +49,17 @@ window.EmojiWarsGame = (function() {
     let p1Wins = 0;
     let p2Wins = 0;
     let isGameOver = false;
+    let isAiThinking = false;
+    let seededRandom = null;
 
     function init(gameConfig) {
         config = gameConfig;
+        seededRandom = config.seed ? createSeededRandom(config.seed) : null;
         
         p1Soldiers = [];
         p2Soldiers = [];
         terrainBlocks = [];
+        terrainCatalog = new Map();
         visualEffects = [];
         toxicSocks = [];
         boomerangs = [];
@@ -80,6 +85,7 @@ window.EmojiWarsGame = (function() {
         moaiUses = { 1: 1, 2: 1 };
         fanUses = { 1: 1, 2: 1 };
         isGameOver = false;
+        isAiThinking = false;
         giantTurns = { 1: 0, 2: 0 };
         frozenTeams = { 1: 0, 2: 0 };
         hasMoved = false;
@@ -104,6 +110,22 @@ window.EmojiWarsGame = (function() {
         setupGameLoop();
         setupCollisions();
         updateTurnUI();
+    }
+
+    function createSeededRandom(seed) {
+        let value = 0;
+        const text = String(seed);
+        for (let i = 0; i < text.length; i++) {
+            value = (value * 31 + text.charCodeAt(i)) >>> 0;
+        }
+        return () => {
+            value = (value * 1664525 + 1013904223) >>> 0;
+            return value / 4294967296;
+        };
+    }
+
+    function rand() {
+        return seededRandom ? seededRandom() : Math.random();
     }
 
     function setupEngine() {
@@ -137,16 +159,16 @@ window.EmojiWarsGame = (function() {
         const blockSize = 15;
         const cols = Math.floor(width / blockSize);
         
-        const freq1 = 0.05 + Math.random() * 0.08;
-        const freq2 = 0.02 + Math.random() * 0.04;
-        const amp1  = 4 + Math.random() * 6;
-        const amp2  = 2 + Math.random() * 4;
-        const phase1 = Math.random() * Math.PI * 2;
-        const phase2 = Math.random() * Math.PI * 2;
-        const baseH  = 18 + Math.random() * 6; // Terreno muito mais alto com bastante solo
+        const freq1 = 0.05 + rand() * 0.08;
+        const freq2 = 0.02 + rand() * 0.04;
+        const amp1  = 4 + rand() * 6;
+        const amp2  = 2 + rand() * 4;
+        const phase1 = rand() * Math.PI * 2;
+        const phase2 = rand() * Math.PI * 2;
+        const baseH  = 18 + rand() * 6; // Terreno muito mais alto com bastante solo
         
-        // Terreno correto: elevações pra CIMA, reto fica mais BAIXO
-        // Para cada coluna, calcula quantas fileiras de blocos existem a partir do chão
+        // Terreno correto: elevacoes pra CIMA, reto fica mais BAIXO
+        // Para cada coluna, calcula quantas fileiras de blocos existem a partir do chao
         for (let c = 0; c < cols; c++) {
             const terrainHeight = Math.max(2, Math.floor(
                 Math.sin(c * freq1 + phase1) * amp1 +
@@ -158,13 +180,22 @@ window.EmojiWarsGame = (function() {
                 const isTopLayer = r >= terrainHeight - 2;
                 const color = isTopLayer ? '#4ade80' : '#8b4513';
                 const strokeColor = isTopLayer ? '#166534' : '#451a03';
-                // r=0 é o bloco mais baixo, perto do chão
+                // r=0 e o bloco mais baixo, perto do chao
                 const yPos = height - 60 - r * blockSize - blockSize / 2;
                 let block = Bodies.rectangle(c * blockSize + blockSize / 2, yPos, blockSize, blockSize, {
                     isStatic: true,
                     render: { fillStyle: color, strokeStyle: strokeColor, lineWidth: 1 }
                 });
                 block.isTerrain = true;
+                block.syncId = `t-${c}-${r}`;
+                terrainCatalog.set(block.syncId, {
+                    x: c * blockSize + blockSize / 2,
+                    y: yPos,
+                    width: blockSize,
+                    height: blockSize,
+                    fillStyle: color,
+                    strokeStyle: strokeColor
+                });
                 terrainBlocks.push(block);
                 Composite.add(engine.world, block);
             }
@@ -178,8 +209,8 @@ window.EmojiWarsGame = (function() {
         const spawnTeam = (count, playerNum, emoji, color, startX, isP1, namesArray) => {
             const teamArray = isP1 ? p1Soldiers : p2Soldiers;
             for (let i = 0; i < count; i++) {
-                let x = startX + (Math.random() * (width / 4)) * (isP1 ? 1 : -1);
-                let y = 100 + (Math.random() * 100);
+                let x = startX + (rand() * (width / 4)) * (isP1 ? 1 : -1);
+                let y = 100 + (rand() * 100);
                 
                 let body = Bodies.circle(x, y, radius, {
                     restitution: 0.2, friction: 0.9, frictionStatic: 2.0, density: 0.1,
@@ -187,6 +218,7 @@ window.EmojiWarsGame = (function() {
                     render: { visible: false }
                 });
                 body.player = playerNum;
+                body.syncId = `p${playerNum}-${i}`;
                 body.emoji = emoji;
                 body.color = color;
                 body.hp = 100;
@@ -209,8 +241,8 @@ window.EmojiWarsGame = (function() {
         const allSoldiers = p1Soldiers.concat(p2Soldiers);
         allSoldiers.forEach(s => {
             if (s !== activeSoldier) {
-                s.animType = animTypes[Math.floor(Math.random() * animTypes.length)];
-                s.animOffset = Math.random() * Math.PI * 2;
+                s.animType = animTypes[Math.floor(rand() * animTypes.length)];
+                s.animOffset = rand() * Math.PI * 2;
             } else {
                 s.animType = 'none';
             }
@@ -232,10 +264,11 @@ window.EmojiWarsGame = (function() {
             checkWinState();
             return;
         }
-        activeSoldier = team[Math.floor(Math.random() * team.length)];
+        activeSoldier = team[Math.floor(rand() * team.length)];
         hasMoved = false;
         launchTrail = [];
         assignIdleAnimations();
+        scheduleAiTurn();
     }
 
     function checkWinState() {
@@ -253,11 +286,11 @@ window.EmojiWarsGame = (function() {
                 winnerName = "Empate!";
             }
 
-            document.getElementById('p1-wins-display').textContent = `Vitórias: ${p1Wins}`;
-            document.getElementById('p2-wins-display').textContent = `Vitórias: ${p2Wins}`;
+            document.getElementById('p1-wins-display').textContent = `Vit?rias: ${p1Wins}`;
+            document.getElementById('p2-wins-display').textContent = `Vit?rias: ${p2Wins}`;
 
             const turnTitle = document.getElementById('current-turn');
-            turnTitle.textContent = winnerName === "Empate!" ? "Empate!" : `Vitória: ${winnerName}!!`;
+            turnTitle.textContent = winnerName === "Empate!" ? "Empate!" : `Vit?ria: ${winnerName}!!`;
             turnTitle.style.color = 'white';
 
             setTimeout(() => {
@@ -282,7 +315,7 @@ window.EmojiWarsGame = (function() {
         const btnP1 = document.getElementById('p1-arsenal-btn');
         const btnP2 = document.getElementById('p2-arsenal-btn');
 
-        const openMenu = () => { if (!isAiming) menu.classList.remove('hidden'); };
+        const openMenu = () => { if (!isAiming && canControlCurrentTurn()) menu.classList.remove('hidden'); };
         
         btnP1.addEventListener('click', openMenu);
         btnP2.addEventListener('click', openMenu);
@@ -291,28 +324,28 @@ window.EmojiWarsGame = (function() {
             btn.addEventListener('click', (e) => {
                 const weapon = e.target.getAttribute('data-weapon');
                 if (weapon === 'meteor' && meteorUses[currentTurn] <= 0) {
-                    alert("Você já usou o seu Meteoro nesta partida!");
+                    alert("Voc? j? usou o seu Meteoro nesta partida!");
                     return;
                 }
                 if (weapon === 'umbrella' && umbrellaUses[currentTurn] <= 0) {
-                    alert("Você já usou a Chuva Ácida nesta partida!");
+                    alert("Voc? j? usou a Chuva ?cida nesta partida!");
                     return;
                 }
                 if (weapon === 'helmet' && healthHelmetUses[currentTurn] <= 0) {
-                    alert("Você já usou o Capacete Saúde nesta partida!");
+                    alert("Voc? j? usou o Capacete Sa?de nesta partida!");
                     return;
                 }
-                if (weapon === 'icecube' && iceCubeUses[currentTurn] <= 0) { alert("Você já usou o Cubo de Gelo!"); return; }
-                if (weapon === 'fairy' && fairyUses[currentTurn] <= 0) { alert("Você já usou a Fada Madrinha!"); return; }
-                if (weapon === 'moai' && moaiUses[currentTurn] <= 0) { alert("Você já usou a Estátua Moai!"); return; }
-                if (weapon === 'fan' && fanUses[currentTurn] <= 0) { alert("Você já usou o Leque!"); return; }
+                if (weapon === 'icecube' && iceCubeUses[currentTurn] <= 0) { alert("Voc? j? usou o Cubo de Gelo!"); return; }
+                if (weapon === 'fairy' && fairyUses[currentTurn] <= 0) { alert("Voc? j? usou a Fada Madrinha!"); return; }
+                if (weapon === 'moai' && moaiUses[currentTurn] <= 0) { alert("Voc? j? usou a Est?tua Moai!"); return; }
+                if (weapon === 'fan' && fanUses[currentTurn] <= 0) { alert("Voc? j? usou o Leque!"); return; }
                 
                 currentWeapon = weapon;
                 menu.classList.add('hidden');
 
                 if (['umbrella', 'saucer', 'lightning', 'helicopter', 'pepper', 'meteor', 'helmet', 'icecube', 'skip', 'fairy', 'moai', 'fan'].includes(weapon)) {
-                    shootWeapon(activeSoldier ? activeSoldier.position : {x:0, y:0}, {x:0, y:0}, activeSoldier ? activeSoldier.color : '#fff');
-                    endTurnSequence(weapon === 'helicopter' || weapon === 'pepper' ? 7000 : 3000);
+                    publishOnlineAction({ type: 'instantWeapon', weapon });
+                    applyInstantWeapon(weapon, true);
                 }
             });
         });
@@ -320,11 +353,87 @@ window.EmojiWarsGame = (function() {
         closeBtn.addEventListener('click', () => menu.classList.add('hidden'));
     }
 
+    function isAiTurn() {
+        return config && config.mode === 'solo' && currentTurn === 2 && config.player2.isAI;
+    }
+
+    function canControlCurrentTurn() {
+        if (isAiTurn()) return false;
+        if (config && config.mode === 'online') {
+            return config.localPlayer === currentTurn;
+        }
+        return true;
+    }
+
+    function scheduleAiTurn() {
+        if (!isAiTurn() || isAiThinking || isGameOver || !activeSoldier) return;
+        isAiThinking = true;
+        document.getElementById('game-instructions').textContent = 'IA pensando...';
+
+        setTimeout(() => {
+            if (!isAiTurn() || isGameOver || !activeSoldier) {
+                isAiThinking = false;
+                return;
+            }
+            runAiTurn();
+        }, 900);
+    }
+
+    function runAiTurn() {
+        const enemies = p1Soldiers.filter(s => s.hp > 0);
+        if (enemies.length === 0) {
+            isAiThinking = false;
+            checkWinState();
+            return;
+        }
+
+        const target = enemies.reduce((closest, soldier) => {
+            const closestDist = Vector.magnitude(Vector.sub(closest.position, activeSoldier.position));
+            const soldierDist = Vector.magnitude(Vector.sub(soldier.position, activeSoldier.position));
+            return soldierDist < closestDist ? soldier : closest;
+        }, enemies[0]);
+
+        const moveDir = Math.sign(target.position.x - activeSoldier.position.x) || -1;
+        Matter.Body.applyForce(activeSoldier, activeSoldier.position, {
+            x: moveDir * 0.01 * activeSoldier.mass,
+            y: -0.008 * activeSoldier.mass
+        });
+
+        showGiantAnnouncement("IA ATACANDO!");
+
+        setTimeout(() => {
+            if (!isAiTurn() || isGameOver || !activeSoldier || target.hp <= 0) {
+                isAiThinking = false;
+                endTurnSequence(800);
+                return;
+            }
+
+            const weaponChoices = ['grenade', 'gun', 'dynamite', 'sheep', 'sock', 'boomerang', 'frisbee'];
+            if (meteorUses[currentTurn] > 0 && rand() < 0.25) weaponChoices.push('meteor');
+            if (fairyUses[currentTurn] > 0 && rand() < 0.2) weaponChoices.push('fairy');
+            if (healthHelmetUses[currentTurn] > 0 && rand() < 0.12) weaponChoices.push('helmet');
+
+            currentWeapon = weaponChoices[Math.floor(rand() * weaponChoices.length)];
+
+            const dx = target.position.x - activeSoldier.position.x;
+            const dy = target.position.y - activeSoldier.position.y;
+            const forceVector = {
+                x: Math.max(-260, Math.min(260, dx * 0.75)),
+                y: Math.max(-260, Math.min(120, dy * 0.6 - 170))
+            };
+
+            shootWeapon(activeSoldier.position, forceVector, activeSoldier.color);
+            isAiThinking = false;
+            endTurnSequence(['meteor', 'fairy', 'helmet'].includes(currentWeapon) ? 3000 : 2600);
+        }, 900);
+    }
+
     function setupControls() {
         const canvas = render.canvas;
 
         const handleStart = (x, y) => {
             if (!activeSoldier || isGameOver) return;
+            if (!canControlCurrentTurn()) return;
             if (['umbrella', 'saucer', 'lightning', 'helicopter', 'pepper', 'meteor', 'helmet', 'icecube', 'skip', 'fairy', 'moai', 'fan'].includes(currentWeapon)) return;
             isAiming = true;
             dragStart = { x: x, y: y };
@@ -344,19 +453,49 @@ window.EmojiWarsGame = (function() {
             const dragEnd = { x: x, y: y };
             const forceX = (dragStart.x - dragEnd.x);
             const forceY = (dragStart.y - dragEnd.y);
+            publishOnlineAction({ type: 'drag', forceX, forceY, weapon: currentWeapon });
+            applyDragAction(forceX, forceY, currentWeapon, true);
+        };
 
-            // Primeiro drag do turno: LANÇA o soldado (como bomba, sem explodir), força proporcional ao vetor de drag
+        canvas.addEventListener('mousedown', (e) => handleStart(e.clientX, e.clientY));
+        canvas.addEventListener('mousemove', (e) => handleMove(e.clientX, e.clientY));
+        canvas.addEventListener('mouseup', (e) => handleEnd(e.clientX, e.clientY));
+
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleStart(e.touches[0].clientX, e.touches[0].clientY); });
+        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e.touches[0].clientX, e.touches[0].clientY); });
+        canvas.addEventListener('touchend', (e) => { e.preventDefault(); if(dragStart && window.mouseX) handleEnd(window.mouseX, window.mouseY); });
+    }
+
+    function publishOnlineAction(action) {
+        if (!config || config.mode !== 'online' || !canControlCurrentTurn() || typeof config.onOnlineAction !== 'function') return;
+        config.onOnlineAction({
+            ...action,
+            player: currentTurn
+        });
+    }
+
+    function applyInstantWeapon(weapon, publishSnapshot = false) {
+        currentWeapon = weapon;
+        shootWeapon(activeSoldier ? activeSoldier.position : {x:0, y:0}, {x:0, y:0}, activeSoldier ? activeSoldier.color : '#fff');
+        endTurnSequence(weapon === 'helicopter' || weapon === 'pepper' ? 7000 : 3000, publishSnapshot);
+    }
+
+    function applyDragAction(forceX, forceY, weapon = currentWeapon, publishSnapshot = false) {
+        if (!activeSoldier || isGameOver) return;
+        currentWeapon = weapon;
+
+            // Primeiro drag do turno: LANCA o soldado (como bomba, sem explodir), forca proporcional ao vetor de drag
             if (!hasMoved) {
                 hasMoved = true;
                 const magnitude = Math.sqrt(forceX * forceX + forceY * forceY);
                 if (magnitude > 5) {
                     const scale = activeSoldier.isGiant ? 4 : 1;
-                    // Lançamento com física proporcional (slingshot) como a granada
+                    // Lancamento com fisica proporcional (slingshot) como a granada
                     Matter.Body.applyForce(activeSoldier, activeSoldier.position, {
                         x: forceX * 0.025 * scale,
                         y: forceY * 0.025 * scale
                     });
-                    // Trilha de lançamento
+                    // Trilha de lancamento
                     launchTrail = [];
                     const trailInterval = setInterval(() => {
                         if (!activeSoldier || isGameOver) { clearInterval(trailInterval); return; }
@@ -369,24 +508,147 @@ window.EmojiWarsGame = (function() {
                 document.getElementById('p1-arsenal-btn').classList.remove('disabled-btn');
                 document.getElementById('p2-arsenal-btn').classList.remove('disabled-btn');
                 showGiantAnnouncement("ESCOLHA SUA ARMA E ATAQUE!");
-                return; // não termina o turno
+                return; // nao termina o turno
             }
 
             // Drags seguintes: DISPARA arma e termina o turno
             shootWeapon(activeSoldier.position, { x: forceX, y: forceY }, activeSoldier.color);
-            endTurnSequence();
+            endTurnSequence(3000, publishSnapshot);
+    }
+
+    function applyOnlineAction(action) {
+        if (!action || isGameOver || action.player !== currentTurn) return;
+        if (action.type === 'instantWeapon') {
+            applyInstantWeapon(action.weapon, false);
+            return;
+        }
+        if (action.type === 'drag') {
+            applyDragAction(action.forceX, action.forceY, action.weapon, false);
+        }
+    }
+
+    function publishOnlineSnapshot() {
+        if (!config || config.mode !== 'online' || typeof config.onOnlineSnapshot !== 'function') return;
+        config.onOnlineSnapshot(createOnlineSnapshot());
+    }
+
+    function createOnlineSnapshot() {
+        const allSoldiers = p1Soldiers.concat(p2Soldiers, deadSoldiers);
+        return {
+            currentTurn,
+            currentWeapon,
+            hasMoved,
+            activeSoldierId: activeSoldier ? activeSoldier.syncId : null,
+            meteorUses: { ...meteorUses },
+            umbrellaUses: { ...umbrellaUses },
+            healthHelmetUses: { ...healthHelmetUses },
+            iceCubeUses: { ...iceCubeUses },
+            fairyUses: { ...fairyUses },
+            moaiUses: { ...moaiUses },
+            fanUses: { ...fanUses },
+            giantTurns: { ...giantTurns },
+            frozenTeams: { ...frozenTeams },
+            terrainIds: terrainBlocks.map(block => block.syncId),
+            soldiers: allSoldiers.map(soldier => ({
+                id: soldier.syncId,
+                player: soldier.player,
+                alive: soldier.hp > 0 && (p1Soldiers.includes(soldier) || p2Soldiers.includes(soldier)),
+                hp: soldier.hp,
+                maxHp: soldier.maxHp,
+                emoji: soldier.emoji,
+                name: soldier.name,
+                isGiant: soldier.isGiant,
+                x: soldier.position.x,
+                y: soldier.position.y,
+                vx: soldier.velocity.x,
+                vy: soldier.velocity.y,
+                angle: soldier.angle,
+                angularVelocity: soldier.angularVelocity || 0
+            }))
         };
+    }
 
-        canvas.addEventListener('mousedown', (e) => handleStart(e.clientX, e.clientY));
-        canvas.addEventListener('mousemove', (e) => handleMove(e.clientX, e.clientY));
-        canvas.addEventListener('mouseup', (e) => handleEnd(e.clientX, e.clientY));
+    function applyOnlineSnapshot(snapshot) {
+        if (!snapshot || isGameOver) return;
 
-        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleStart(e.touches[0].clientX, e.touches[0].clientY); });
-        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e.touches[0].clientX, e.touches[0].clientY); });
-        canvas.addEventListener('touchend', (e) => { e.preventDefault(); if(dragStart && window.mouseX) handleEnd(window.mouseX, window.mouseY); });
+        const terrainSet = new Set(snapshot.terrainIds || []);
+        terrainBlocks = terrainBlocks.filter(block => {
+            if (!terrainSet.has(block.syncId)) {
+                Composite.remove(engine.world, block);
+                return false;
+            }
+            return true;
+        });
+
+        const existingTerrainIds = new Set(terrainBlocks.map(block => block.syncId));
+        terrainSet.forEach(id => {
+            if (existingTerrainIds.has(id)) return;
+            const data = terrainCatalog.get(id);
+            if (!data) return;
+
+            const block = Bodies.rectangle(data.x, data.y, data.width, data.height, {
+                isStatic: true,
+                render: { fillStyle: data.fillStyle, strokeStyle: data.strokeStyle, lineWidth: 1 }
+            });
+            block.isTerrain = true;
+            block.syncId = id;
+            terrainBlocks.push(block);
+            Composite.add(engine.world, block);
+        });
+
+        const allSoldiers = p1Soldiers.concat(p2Soldiers, deadSoldiers);
+        const soldierById = new Map(allSoldiers.map(soldier => [soldier.syncId, soldier]));
+
+        p1Soldiers = [];
+        p2Soldiers = [];
+        deadSoldiers = [];
+
+        (snapshot.soldiers || []).forEach(data => {
+            const soldier = soldierById.get(data.id);
+            if (!soldier) return;
+
+            soldier.hp = data.hp;
+            soldier.maxHp = data.maxHp;
+            soldier.emoji = data.emoji;
+            soldier.name = data.name;
+            soldier.isGiant = data.isGiant;
+            Matter.Body.setPosition(soldier, { x: data.x, y: data.y });
+            Matter.Body.setVelocity(soldier, { x: data.vx, y: data.vy });
+            Matter.Body.setAngle(soldier, data.angle || 0);
+            Matter.Body.setAngularVelocity(soldier, data.angularVelocity || 0);
+
+            if (data.alive && data.player === 1) {
+                p1Soldiers.push(soldier);
+            } else if (data.alive && data.player === 2) {
+                p2Soldiers.push(soldier);
+            } else {
+                soldier.hp = 0;
+                soldier.emoji = '⚰️';
+                deadSoldiers.push(soldier);
+            }
+        });
+
+        currentTurn = snapshot.currentTurn;
+        currentWeapon = snapshot.currentWeapon || 'grenade';
+        hasMoved = !!snapshot.hasMoved;
+        meteorUses = { ...meteorUses, ...(snapshot.meteorUses || {}) };
+        umbrellaUses = { ...umbrellaUses, ...(snapshot.umbrellaUses || {}) };
+        healthHelmetUses = { ...healthHelmetUses, ...(snapshot.healthHelmetUses || {}) };
+        iceCubeUses = { ...iceCubeUses, ...(snapshot.iceCubeUses || {}) };
+        fairyUses = { ...fairyUses, ...(snapshot.fairyUses || {}) };
+        moaiUses = { ...moaiUses, ...(snapshot.moaiUses || {}) };
+        fanUses = { ...fanUses, ...(snapshot.fanUses || {}) };
+        giantTurns = { ...giantTurns, ...(snapshot.giantTurns || {}) };
+        frozenTeams = { ...frozenTeams, ...(snapshot.frozenTeams || {}) };
+        activeSoldier = soldierById.get(snapshot.activeSoldierId) || null;
+        isAiming = false;
+        launchTrail = [];
+
+        updateTurnUI();
+        checkWinState();
     }
     
-    function endTurnSequence(delay = 3000) {
+    function endTurnSequence(delay = 3000, publishSnapshot = false) {
         isAiming = false;
 
         setTimeout(() => {
@@ -407,6 +669,9 @@ window.EmojiWarsGame = (function() {
                 selectNextSoldier();
                 
                 currentWeapon = 'grenade';
+                if (publishSnapshot) {
+                    publishOnlineSnapshot();
+                }
             }
         }, delay);
     }
@@ -490,7 +755,7 @@ window.EmojiWarsGame = (function() {
             const enemyTeam = currentTurn === 1 ? p2Soldiers : p1Soldiers;
             let targetX = window.innerWidth * (currentTurn === 1 ? 0.75 : 0.25);
             if (enemyTeam.length > 0) {
-                const targetEnemy = enemyTeam[Math.floor(Math.random() * enemyTeam.length)];
+                const targetEnemy = enemyTeam[Math.floor(rand() * enemyTeam.length)];
                 targetX = targetEnemy.position.x;
             }
             const startX = window.innerWidth * 0.5; // Centro superior da tela
@@ -554,11 +819,11 @@ window.EmojiWarsGame = (function() {
             for(let i=0; i<dropsCount; i++) {
                 setTimeout(() => {
                     let targetX;
-                    if (Math.random() > 0.3 && enemies.length > 0) {
-                        const enemy = enemies[Math.floor(Math.random() * enemies.length)];
-                        targetX = enemy.position.x + (Math.random() * 60 - 30);
+                    if (rand() > 0.3 && enemies.length > 0) {
+                        const enemy = enemies[Math.floor(rand() * enemies.length)];
+                        targetX = enemy.position.x + (rand() * 60 - 30);
                     } else {
-                        targetX = 50 + Math.random() * (window.innerWidth - 100);
+                        targetX = 50 + rand() * (window.innerWidth - 100);
                     }
                     const drop = Bodies.circle(targetX, -50, 5, {
                         restitution: 0.1, density: 0.05, render: { visible: false }
@@ -574,7 +839,7 @@ window.EmojiWarsGame = (function() {
             const enemies = currentTurn === 1 ? p2Soldiers : p1Soldiers;
             const myTeam = currentTurn === 1 ? p1Soldiers : p2Soldiers;
             if (enemies.length > 0) {
-                const victim = enemies[Math.floor(Math.random() * enemies.length)];
+                const victim = enemies[Math.floor(rand() * enemies.length)];
                 let landX = window.innerWidth * (currentTurn === 1 ? 0.25 : 0.75);
                 if (myTeam.length > 0) {
                     landX = myTeam.reduce((sum, s) => sum + s.position.x, 0) / myTeam.length;
@@ -594,7 +859,7 @@ window.EmojiWarsGame = (function() {
         }
         else if (currentWeapon === 'lightning') {
             const enemyTeamNum = currentTurn === 1 ? 2 : 1;
-            giantTurns[enemyTeamNum] = 2; // 1 turno útil
+            giantTurns[enemyTeamNum] = 2; // 1 turno util
             const enemies = currentTurn === 1 ? p2Soldiers : p1Soldiers;
             enemies.forEach(s => {
                 if (!s.isGiant) {
@@ -652,7 +917,7 @@ window.EmojiWarsGame = (function() {
                         heliBeans = heliBeans.filter(b => b !== bean);
                     }
                 }, 3000);
-            }, 950); // Intervalo maior para soltar menos feijões
+            }, 950); // Intervalo maior para soltar menos feijoes
             const moveInterval = setInterval(() => {
                 if (!window._heliState) { clearInterval(moveInterval); clearInterval(beanInterval); return; }
                 window._heliState.x += window._heliState.speed;
@@ -707,7 +972,7 @@ window.EmojiWarsGame = (function() {
             const enemies = currentTurn === 1 ? p2Soldiers : p1Soldiers;
             const aliveEnemies = enemies.filter(s => s.hp > 0);
             if (aliveEnemies.length > 0) {
-                fairy.target = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+                fairy.target = aliveEnemies[Math.floor(rand() * aliveEnemies.length)];
             }
             Composite.add(engine.world, fairy);
             fairies.push(fairy);
@@ -718,7 +983,7 @@ window.EmojiWarsGame = (function() {
             const aliveEnemies = enemies.filter(s => s.hp > 0);
             let targetX = window.innerWidth / 2;
             if (aliveEnemies.length > 0) {
-                targetX = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)].position.x;
+                targetX = aliveEnemies[Math.floor(rand() * aliveEnemies.length)].position.x;
             }
             const moai = Bodies.rectangle(targetX, -200, 80, 150, {
                 restitution: 0, friction: 0, density: 100, isSensor: true, render: { visible: false }
@@ -735,11 +1000,11 @@ window.EmojiWarsGame = (function() {
             
             for(let i=0; i<40; i++) {
                 visualEffects.push({
-                    x: Math.random() * window.innerWidth,
-                    y: Math.random() * window.innerHeight,
-                    text: '🍃', life: 2.0 + Math.random(), isText: true,
-                    vx: dir * (15 + Math.random() * 15),
-                    vy: (Math.random() - 0.5) * 5
+                    x: rand() * window.innerWidth,
+                    y: rand() * window.innerHeight,
+                    text: '🍃', life: 2.0 + rand(), isText: true,
+                    vx: dir * (15 + rand() * 15),
+                    vy: (rand() - 0.5) * 5
                 });
             }
 
@@ -880,7 +1145,7 @@ window.EmojiWarsGame = (function() {
                 }
             }
 
-            // Imã: atrai qualquer projétil em um raio ampliado (raio 300)
+            // Ima: atrai qualquer projetil em um raio ampliado (raio 300)
             for (let i = magnets.length - 1; i >= 0; i--) {
                 const m = magnets[i];
                 if (m.destroyed) continue;
@@ -901,7 +1166,7 @@ window.EmojiWarsGame = (function() {
                 });
             }
 
-            // Pumpkin mine: detecta inimigos próximos e explode causando 20% de dano
+            // Pumpkin mine: detecta inimigos proximos e explode causando 20% de dano
             for (let i = pumpkinMines.length - 1; i >= 0; i--) {
                 const mine = pumpkinMines[i];
                 if (!mine.armed || mine.destroyed) continue;
@@ -928,7 +1193,7 @@ window.EmojiWarsGame = (function() {
                 }
             }
 
-            // Pepper: dano por queimadura 1%/s por até 7s
+            // Pepper: dano por queimadura 1%/s por ate 7s
             const now = Date.now();
             for (let i = pepperEffects.length - 1; i >= 0; i--) {
                 const fx = pepperEffects[i];
@@ -948,7 +1213,7 @@ window.EmojiWarsGame = (function() {
                 });
             }
 
-            // Saucer animation: transporta até a base inimiga / onde estão os rivais
+            // Saucer animation: transporta ate a base inimiga / onde estao os rivais
             if (saucerAnim) {
                 const sa = saucerAnim;
                 if (sa.phase === 'flying') {
@@ -1026,9 +1291,9 @@ window.EmojiWarsGame = (function() {
                 const forceDir = Vector.normalise(Vector.sub(soldier.position, position));
                 const falloff = 1 - (dist / radius);
                 
-                // Força de repulsão bem maior para jogar o soldado longe
+                // Forca de repulsao bem maior para jogar o soldado longe
                 const appliedForce = Vector.mult(forceDir, forceMagnitude * falloff * 4); // Multiplicador forte
-                appliedForce.y -= (forceMagnitude * falloff * 3); // Lança pra cima fortemente
+                appliedForce.y -= (forceMagnitude * falloff * 3); // Lanca pra cima fortemente
                 
                 Matter.Body.applyForce(soldier, soldier.position, appliedForce);
                 
@@ -1079,7 +1344,7 @@ window.EmojiWarsGame = (function() {
             const t = Date.now();
             const width = window.innerWidth;
             const height = window.innerHeight;
-            const waterH = height - 70; // Nível da água
+            const waterH = height - 70; // Nivel da agua
 
             // --- Render Dynamic Water Waves ---
             context.fillStyle = 'rgba(0, 100, 220, 0.7)';
@@ -1377,7 +1642,7 @@ window.EmojiWarsGame = (function() {
                     context.save();
                     context.globalAlpha = 0.8;
                     context.font = "15px Arial";
-                    context.fillText("💧", body.position.x, body.position.y);
+                    context.fillText('💥', body.position.x, body.position.y);
                     context.restore();
                 }
             });
@@ -1418,12 +1683,34 @@ window.EmojiWarsGame = (function() {
     function updateTurnUI() {
         if (isGameOver) return;
         const turnTitle = document.getElementById('current-turn');
+        const instructions = document.getElementById('game-instructions');
         const activeName = currentTurn === 1 ? config.player1.name : config.player2.name;
         turnTitle.textContent = `Turno: ${activeName}`;
         turnTitle.style.color = currentTurn === 1 ? config.player1.color : config.player2.color;
+        if (isAiTurn()) {
+            instructions.textContent = 'IA pensando...';
+        } else if (config && config.mode === 'online' && !canControlCurrentTurn()) {
+            instructions.textContent = `Aguardando jogada do Player ${currentTurn}...`;
+        } else {
+            instructions.textContent = 'Arraste para mirar e solte para atirar!';
+        }
         
         const btnP1 = document.getElementById('p1-arsenal-btn');
         const btnP2 = document.getElementById('p2-arsenal-btn');
+
+        if (isAiTurn()) {
+            btnP1.classList.add('hidden');
+            btnP2.classList.add('hidden');
+            showGiantAnnouncement("TURNO DA IA!");
+            return;
+        }
+
+        if (config && config.mode === 'online' && !canControlCurrentTurn()) {
+            btnP1.classList.add('hidden');
+            btnP2.classList.add('hidden');
+            showGiantAnnouncement(`TURNO DO PLAYER ${currentTurn}`);
+            return;
+        }
         
         if (currentTurn === 1) {
             btnP1.classList.remove('hidden');
@@ -1439,6 +1726,8 @@ window.EmojiWarsGame = (function() {
     }
 
     return {
-        init: init
+        init: init,
+        applyOnlineAction: applyOnlineAction,
+        applyOnlineSnapshot: applyOnlineSnapshot
     };
 })();
