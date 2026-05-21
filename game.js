@@ -52,6 +52,7 @@ window.EmojiWarsGame = (function() {
     let isAiThinking = false;
     let seededRandom = null;
     let endTurnTimer = null;
+    let snapshotStreamTimer = null;
 
     function init(gameConfig) {
         config = gameConfig;
@@ -60,6 +61,7 @@ window.EmojiWarsGame = (function() {
             clearTimeout(endTurnTimer);
             endTurnTimer = null;
         }
+        stopOnlineSnapshotStream();
         
         p1Soldiers = [];
         p2Soldiers = [];
@@ -515,6 +517,9 @@ window.EmojiWarsGame = (function() {
                 document.getElementById('p1-arsenal-btn').classList.remove('disabled-btn');
                 document.getElementById('p2-arsenal-btn').classList.remove('disabled-btn');
                 showGiantAnnouncement("ESCOLHA SUA ARMA E ATAQUE!");
+                if (publishSnapshot) {
+                    startOnlineSnapshotStream(2200);
+                }
                 return; // nao termina o turno
             }
 
@@ -543,14 +548,28 @@ window.EmojiWarsGame = (function() {
         }
     }
 
-    function publishOnlineSnapshot() {
+    function publishOnlineSnapshot(includeTerrain = true) {
         if (!config || config.mode !== 'online' || typeof config.onOnlineSnapshot !== 'function') return;
-        config.onOnlineSnapshot(createOnlineSnapshot());
+        config.onOnlineSnapshot(createOnlineSnapshot(includeTerrain));
     }
 
-    function createOnlineSnapshot() {
+    function startOnlineSnapshotStream(duration = 3500) {
+        if (!config || config.mode !== 'online' || typeof config.onOnlineSnapshot !== 'function') return;
+        stopOnlineSnapshotStream();
+        publishOnlineSnapshot(false);
+        snapshotStreamTimer = setInterval(() => publishOnlineSnapshot(false), 120);
+        setTimeout(() => stopOnlineSnapshotStream(), duration);
+    }
+
+    function stopOnlineSnapshotStream() {
+        if (!snapshotStreamTimer) return;
+        clearInterval(snapshotStreamTimer);
+        snapshotStreamTimer = null;
+    }
+
+    function createOnlineSnapshot(includeTerrain = true) {
         const allSoldiers = p1Soldiers.concat(p2Soldiers, deadSoldiers);
-        return {
+        const snapshot = {
             currentTurn,
             currentWeapon,
             hasMoved,
@@ -564,7 +583,6 @@ window.EmojiWarsGame = (function() {
             fanUses: { ...fanUses },
             giantTurns: { ...giantTurns },
             frozenTeams: { ...frozenTeams },
-            terrainIds: terrainBlocks.map(block => block.syncId),
             soldiers: allSoldiers.map(soldier => ({
                 id: soldier.syncId,
                 player: soldier.player,
@@ -582,6 +600,10 @@ window.EmojiWarsGame = (function() {
                 angularVelocity: soldier.angularVelocity || 0
             }))
         };
+        if (includeTerrain) {
+            snapshot.terrainIds = terrainBlocks.map(block => block.syncId);
+        }
+        return snapshot;
     }
 
     function applyOnlineSnapshot(snapshot) {
@@ -591,30 +613,32 @@ window.EmojiWarsGame = (function() {
             endTurnTimer = null;
         }
 
-        const terrainSet = new Set(snapshot.terrainIds || []);
-        terrainBlocks = terrainBlocks.filter(block => {
-            if (!terrainSet.has(block.syncId)) {
-                Composite.remove(engine.world, block);
-                return false;
-            }
-            return true;
-        });
-
-        const existingTerrainIds = new Set(terrainBlocks.map(block => block.syncId));
-        terrainSet.forEach(id => {
-            if (existingTerrainIds.has(id)) return;
-            const data = terrainCatalog.get(id);
-            if (!data) return;
-
-            const block = Bodies.rectangle(data.x, data.y, data.width, data.height, {
-                isStatic: true,
-                render: { fillStyle: data.fillStyle, strokeStyle: data.strokeStyle, lineWidth: 1 }
+        if (Array.isArray(snapshot.terrainIds)) {
+            const terrainSet = new Set(snapshot.terrainIds);
+            terrainBlocks = terrainBlocks.filter(block => {
+                if (!terrainSet.has(block.syncId)) {
+                    Composite.remove(engine.world, block);
+                    return false;
+                }
+                return true;
             });
-            block.isTerrain = true;
-            block.syncId = id;
-            terrainBlocks.push(block);
-            Composite.add(engine.world, block);
-        });
+
+            const existingTerrainIds = new Set(terrainBlocks.map(block => block.syncId));
+            terrainSet.forEach(id => {
+                if (existingTerrainIds.has(id)) return;
+                const data = terrainCatalog.get(id);
+                if (!data) return;
+
+                const block = Bodies.rectangle(data.x, data.y, data.width, data.height, {
+                    isStatic: true,
+                    render: { fillStyle: data.fillStyle, strokeStyle: data.strokeStyle, lineWidth: 1 }
+                });
+                block.isTerrain = true;
+                block.syncId = id;
+                terrainBlocks.push(block);
+                Composite.add(engine.world, block);
+            });
+        }
 
         const allSoldiers = p1Soldiers.concat(p2Soldiers, deadSoldiers);
         const soldierById = new Map(allSoldiers.map(soldier => [soldier.syncId, soldier]));
@@ -674,6 +698,9 @@ window.EmojiWarsGame = (function() {
             clearTimeout(endTurnTimer);
             endTurnTimer = null;
         }
+        if (publishSnapshot) {
+            startOnlineSnapshotStream(delay + 500);
+        }
 
         endTurnTimer = setTimeout(() => {
             endTurnTimer = null;
@@ -695,7 +722,8 @@ window.EmojiWarsGame = (function() {
                 
                 currentWeapon = 'grenade';
                 if (publishSnapshot) {
-                    publishOnlineSnapshot();
+                    stopOnlineSnapshotStream();
+                    publishOnlineSnapshot(true);
                 }
             }
         }, delay);
